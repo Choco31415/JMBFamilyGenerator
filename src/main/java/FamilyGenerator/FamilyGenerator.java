@@ -2,14 +2,19 @@ package FamilyGenerator;
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.io.UnsupportedEncodingException;
 import java.net.SocketException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.logging.Level;
 
+import org.apache.commons.text.StringEscapeUtils;
 import org.apache.http.HttpResponse;
 import org.apache.http.NoHttpResponseException;
 import org.apache.http.client.methods.HttpHead;
@@ -17,10 +22,6 @@ import org.apache.http.util.EntityUtils;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
-import Errors.NetworkError;
-
-import org.apache.commons.text.StringEscapeUtils;
 
 public class FamilyGenerator {
 
@@ -507,7 +508,6 @@ public class FamilyGenerator {
 	 * Utility Code
 	 */
 	
-	
 	public int getResponseCode(String url) {
   		//This method actual fetches a web page, and returns the response code.
 		HttpResponse response = null;
@@ -526,10 +526,47 @@ public class FamilyGenerator {
 	}
 	
 	public ArrayList<String> readFileAsList(Path path) {
+		StringBuilder file = new StringBuilder("");
 		
+		try {
+			// Read in the file!
+			InputStream in = FileUtils.class.getResourceAsStream(path);
+			BufferedReader br = new BufferedReader(
+						new InputStreamReader(in)
+					);
+			
+			// Parse file array into java int array
+			String line;
+			line = br.readLine();
+			do {
+				file.append(line + "\n");
+				line = br.readLine();
+			} while (line != null);
+			
+			in.close();
+			br.close();
+			
+		} catch (IOException e) {
+			logger.logError("Error reading in list.");
+		}
+		
+		return file.toString();
 	}
 	
 	public void writeFile(Path path, String content) {
+		PrintWriter writer = null;
 		
+		try {
+			logger.logInfo("Writting file: " + path);
+			writer = new PrintWriter(path, "UTF-8");
+		} catch (FileNotFoundException e) {
+			logger.logError("File not found");
+			return;
+		} catch (UnsupportedEncodingException e) {
+			logger.logError("Unsupported file format");
+			return;
+		}
+		writer.write(text);
+		writer.close();
 	}
 }
