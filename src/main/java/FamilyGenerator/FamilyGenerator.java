@@ -4,22 +4,25 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.net.SocketException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.logging.Level;
 
+import org.apache.http.HttpResponse;
+import org.apache.http.NoHttpResponseException;
+import org.apache.http.client.methods.HttpHead;
 import org.apache.http.util.EntityUtils;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import Errors.NetworkError;
+
 import org.apache.commons.text.StringEscapeUtils;
 
-import WikiBot.Core.NetworkingBase;
-import WikiBot.Utils.FileUtils;
-
-public class FamilyGenerator extends NetworkingBase {
+public class FamilyGenerator {
 
 	private static final long serialVersionUID = 1L;
 	private static final String RESOURCES_PATH = "src/main/resources";
@@ -47,8 +50,6 @@ public class FamilyGenerator extends NetworkingBase {
 	 * @throws URISyntaxException
 	 */
 	public void run() throws IOException, URISyntaxException {
-		setLoggerLevel(Level.INFO);
-		
 		System.out.println("You are running the script that makes a new wiki family.");
 		
 		//Get user input
@@ -172,7 +173,7 @@ public class FamilyGenerator extends NetworkingBase {
 			System.out.println("If any wikis are included by mistake, update "
 					+ "Families/Miscalleneous/DefaultInterwikis.txt and contact "
 					+ "JMB's owner Choco31415.");
-			defaultInterwikis = FileUtils.readFileAsList("/Families/Miscalleneous/DefaultInterwikis.txt", 0, true, true);
+			defaultInterwikis = readFileAsList("/Families/Miscalleneous/DefaultInterwikis.txt", 0, true, true);
 		}
 		
 		//Ask for a wiki url, so we can get all wikis in the wiki group.
@@ -441,7 +442,7 @@ public class FamilyGenerator extends NetworkingBase {
 		try {
 			rootNode = mapper.readValue(serverOutput, JsonNode.class);
 		} catch (IOException e1) {
-			logError("Was expecting JSON, but did not receive JSON from server.");
+			System.out.println("ERROR: Was expecting JSON, but did not receive JSON from server.");
 			return "";
 		}
 		
@@ -481,20 +482,20 @@ public class FamilyGenerator extends NetworkingBase {
 					// The directory is valid, so we can create the family file.
 					familyFile = new File(directory + familyName + ".txt");
 					
-					String toWrite = "[";
+					String fileContent = "[";
 					
 					for (int i = 0; i < wikiPrefixes.size(); i++) {
-						toWrite += "{\"prefix\": \"" + wikiPrefixes.get(i) + "\", ";
-						toWrite += "\"version\": \"" + MWversions.get(i) + "\", ";
-						toWrite += "\"url\": \"" + wikiURLs.get(i) + "\"}";
+						fileContent += "{\"prefix\": \"" + wikiPrefixes.get(i) + "\", ";
+						fileContent += "\"version\": \"" + MWversions.get(i) + "\", ";
+						fileContent += "\"url\": \"" + wikiURLs.get(i) + "\"}";
 						if (i != wikiPrefixes.size()-1) {
-							toWrite += ",\n";
+							fileContent += ",\n";
 						}
 					}
 					
-					toWrite += "]";
+					fileContent += "]";
 					
-					FileUtils.writeFile(toWrite, familyFile.getAbsolutePath());
+					writeFile(familyFile.getAbsolutePath(), fileContent);
 					
 					done = true;
 				}
@@ -502,12 +503,33 @@ public class FamilyGenerator extends NetworkingBase {
 		}
 	}
 	
-	@Override
-	public boolean log(Level level, String line) {
-		if (super.log(level, line)) {
-			System.out.println(line);
-			return true;
+	/**
+	 * Utility Code
+	 */
+	
+	
+	public int getResponseCode(String url) {
+  		//This method actual fetches a web page, and returns the response code.
+		HttpResponse response = null;
+	 	HttpHead httpost = new HttpHead(url);
+		
+		// Fetch the url.
+		try {
+			response = httpclient.execute(httpost, context);
+		} catch (SocketException|NoHttpResponseException e) {
+			throw new NetworkError("Cannot connect to server at: " + url);
+		} catch (IOException e) {
+			e.printStackTrace();
 		}
-		return false;
+		
+		return response.getStatusLine().getStatusCode();
+	}
+	
+	public ArrayList<String> readFileAsList(Path path) {
+		
+	}
+	
+	public void writeFile(Path path, String content) {
+		
 	}
 }
