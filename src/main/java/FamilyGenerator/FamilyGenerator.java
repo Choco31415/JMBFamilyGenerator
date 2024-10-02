@@ -20,7 +20,6 @@ import java.net.SocketException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
-import java.util.logging.Level;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.X509TrustManager;
@@ -43,7 +42,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 public class FamilyGenerator {
 
-	private static final long serialVersionUID = 1L;
 	private static final String RESOURCES_PATH = "src/main/resources";
 	
 	private BufferedReader br;
