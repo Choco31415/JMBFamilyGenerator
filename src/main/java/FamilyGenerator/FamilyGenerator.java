@@ -8,16 +8,34 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
 import java.net.SocketException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.logging.Level;
 
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.X509TrustManager;
+
 import org.apache.commons.text.StringEscapeUtils;
+import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.NoHttpResponseException;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpHead;
+import org.apache.http.client.protocol.HttpClientContext;
+import org.apache.http.conn.ssl.NoopHostnameVerifier;
+import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
+import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.util.EntityUtils;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -35,9 +53,61 @@ public class FamilyGenerator {
 	private ArrayList<String> wikiPrefixes = new ArrayList<String>();
 	private ArrayList<String> wikiURLs = new ArrayList<String>();
 	private ArrayList<String> MWversions = new ArrayList<String>();
+	
+	//These variables are used for networking purposes (GET and POST requests).
+    private HttpClient httpclient;
+	private HttpClientContext context;
+	
+	//Special characters.
+	private static final String UTF8_BOM = "\uFEFF";
+	
+	// One-off SSL trust manager class.
+	public class HttpsTrustManager implements X509TrustManager {
+		@Override
+		public void checkClientTrusted(X509Certificate[] arg0, String arg1) throws CertificateException {
+			// TODO Auto-generated method stub
+			
+		}
+
+		@Override
+		public void checkServerTrusted(X509Certificate[] arg0, String arg1) throws CertificateException {
+			// TODO Auto-generated method stub
+			
+		}
+
+		@Override
+		public X509Certificate[] getAcceptedIssuers() {
+			// TODO Auto-generated method stub
+			return new X509Certificate[]{};
+		}
+
+	}
+	
+	private void setupSSLclient() {
+		// Handle SSL
+		SSLContext sslcontext = null;
+		SSLConnectionSocketFactory factory = null;
+
+			
+			try {
+				sslcontext = SSLContext.getInstance("TLSv1.2");
+				sslcontext.init(null, new X509TrustManager[]{new HttpsTrustManager()}, new SecureRandom());
+		        factory = new SSLConnectionSocketFactory(sslcontext, new String[] { "TLSv1", "TLSv1.1", "TLSv1.2"  }, null, new NoopHostnameVerifier());
+			} catch (KeyManagementException | NoSuchAlgorithmException e) {
+				// TODO Auto-generated catch block
+				System.out.println("Could not create SSL context. Entering fail state.");
+				throw new Error(e.getMessage());
+			}
+
+
+			    
+		// Create client and context for web stuff.
+		httpclient = HttpClientBuilder.create().setSSLSocketFactory(factory).build();
+	}
 
 	private FamilyGenerator() {
-		super();
+		setupSSLclient();
+		context =  HttpClientContext.create();
 	}
 
 	static public void main(String[] args) throws IOException, URISyntaxException {
@@ -174,7 +244,7 @@ public class FamilyGenerator {
 			System.out.println("If any wikis are included by mistake, update "
 					+ "Families/Miscalleneous/DefaultInterwikis.txt and contact "
 					+ "JMB's owner Choco31415.");
-			defaultInterwikis = readFileAsList("/Families/Miscalleneous/DefaultInterwikis.txt", 0, true, true);
+			defaultInterwikis = readClassFile("DefaultInterwikis.txt"); // TODO : Add file.
 		}
 		
 		//Ask for a wiki url, so we can get all wikis in the wiki group.
@@ -496,7 +566,7 @@ public class FamilyGenerator {
 					
 					fileContent += "]";
 					
-					writeFile(familyFile.getAbsolutePath(), fileContent);
+					writeFile(Paths.get(familyFile.getAbsolutePath()), fileContent);
 					
 					done = true;
 				}
@@ -517,7 +587,7 @@ public class FamilyGenerator {
 		try {
 			response = httpclient.execute(httpost, context);
 		} catch (SocketException|NoHttpResponseException e) {
-			throw new NetworkError("Cannot connect to server at: " + url);
+			System.out.println("Cannot connect to server at: " + url);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -525,48 +595,63 @@ public class FamilyGenerator {
 		return response.getStatusLine().getStatusCode();
 	}
 	
-	public ArrayList<String> readFileAsList(Path path) {
-		StringBuilder file = new StringBuilder("");
+	/**
+	 * @param ur The url you want to get.
+	 * @param unescapeHTML4 Unescapes HTML4 text. Ex: & #039;
+	 */
+	protected HttpEntity getURL(String ur) throws IOException {	  		
+  		//This method actual fetches a web page, and turns it into a more easily use-able format.		  		//This method actual fetches a web page, and turns it into a more easily use-able format.
+		HttpResponse response = null;
+	 	HttpGet httpost = new HttpGet(ur);
 		
+		// Fetch the url.
 		try {
-			// Read in the file!
-			InputStream in = FileUtils.class.getResourceAsStream(path);
-			BufferedReader br = new BufferedReader(
-						new InputStreamReader(in)
-					);
-			
-			// Parse file array into java int array
-			String line;
-			line = br.readLine();
-			do {
-				file.append(line + "\n");
-				line = br.readLine();
-			} while (line != null);
-			
-			in.close();
-			br.close();
-			
+			response = httpclient.execute(httpost, context);
+		} catch (SocketException|NoHttpResponseException e) {
+			throw new Error("Cannot connect to server at: " + ur);
 		} catch (IOException e) {
-			logger.logError("Error reading in list.");
+			e.printStackTrace();
+		}
+		return response.getEntity();
+	}
+	
+	public String removeBOM(String text) {
+		String toReturn = text;
+		
+		if (text.startsWith(UTF8_BOM)) {
+			toReturn = toReturn.substring(1);
 		}
 		
-		return file.toString();
+		return toReturn;
+	}
+	
+	public ArrayList<String> readClassFile(String filename) throws IOException {
+		ClassLoader loader = FamilyGenerator.class.getClassLoader();
+		InputStream inputStream = loader.getResourceAsStream(filename);
+		InputStreamReader streamReader = new InputStreamReader(inputStream, StandardCharsets.UTF_8);
+		BufferedReader reader = new BufferedReader(streamReader);
+		
+		ArrayList<String> lines = new ArrayList<String>();
+		String line = reader.readLine();
+		while (line != null) {
+			lines.add(line);
+			line = reader.readLine();
+		}
+		
+		return lines;
 	}
 	
 	public void writeFile(Path path, String content) {
 		PrintWriter writer = null;
 		
 		try {
-			logger.logInfo("Writting file: " + path);
-			writer = new PrintWriter(path, "UTF-8");
-		} catch (FileNotFoundException e) {
-			logger.logError("File not found");
-			return;
-		} catch (UnsupportedEncodingException e) {
-			logger.logError("Unsupported file format");
+			System.out.println("Writting file: " + path);
+			writer = new PrintWriter(path.toString(), "UTF-8");
+		} catch (FileNotFoundException | UnsupportedEncodingException e) {
+			e.printStackTrace();
 			return;
 		}
-		writer.write(text);
+		writer.write(content);
 		writer.close();
 	}
 }
